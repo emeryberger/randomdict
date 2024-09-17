@@ -1,27 +1,25 @@
-# From https://stackoverflow.com/a/70870131
-
-try:
-    from collections.abc import MutableMapping
-except ImportError:
-    from collections import MutableMapping
-
 import random
 
-__version__ = '0.2.1'
+__version__ = '0.2.2'
 
-class RandomDict(MutableMapping):
+class RandomDict(dict):
     def __init__(self, *args, **kwargs):
-        self._keys = {}
-        self._values = []
+        super().__init__(*args, **kwargs)
+        self._keys = {}  # Maps keys to their index in _random_vector
+        self._random_vector = []
         self.last_index = -1
-        # Populate the RandomDict with any items passed in *args or **kwargs
-        self.update(*args, **kwargs)
+
+        # Populate _keys and _random_vector along with the inherited dict
+        for key in self.keys():
+            self._random_vector.append(key)
+            self.last_index += 1
+            self._keys[key] = self.last_index
 
     def copy(self):
         """ Return a shallow copy of the RandomDict """
-        new_rd = RandomDict()
-        new_rd._keys = self._keys.copy()          
-        new_rd._values = self._values[:]         
+        new_rd = RandomDict(super().copy())
+        new_rd._keys = self._keys.copy()
+        new_rd._random_vector = self._random_vector[:]
         new_rd.last_index = self.last_index
         return new_rd
 
@@ -33,53 +31,44 @@ class RandomDict(MutableMapping):
             rd[key] = value
         return rd
 
-    def __setitem__(self, key, val):
-        i = self._keys.get(key, -1)                
-        if i > -1:
-            self._values[i] = (key, val)          
-        else:
+    def __setitem__(self, key, value):
+        """ Insert or update a key-value pair """
+        super().__setitem__(key, value)
+        i = self._keys.get(key, -1)
+
+        if i == -1:
+            # Add new key
             self.last_index += 1
-            i = self.last_index
-            self._values.append((key, val))       
-            self._keys[key] = i                   
-    
+            self._random_vector.append(key)
+            self._keys[key] = self.last_index
+
     def __delitem__(self, key):
-        # index of item to delete is i
-        i = self._keys[key]                        
-        # last item in values array is
-        move_key, move_val = self._values.pop()    
-
-        if i != self.last_index:
-            # we move the last item into its location
-            self._values[i] = (move_key, move_val)  
-            self._keys[move_key] = i                
-        # else it was the last item and we just throw
-        # it away
-
-        # shorten array of values
-        self.last_index -= 1
-        # remove deleted key
-        del self._keys[key]                        
-    
-    def __getitem__(self, key):
-        if key not in self._keys:                   
+        """ Delete item by swapping with the last element in the random vector """
+        if key not in self._keys:
             raise KeyError(key)
-        i = self._keys[key]                         
-        return self._values[i][1]                   
 
-    def __iter__(self):
-        return iter(self._keys)                     
+        # Get the index of the item to delete
+        i = self._keys[key]
 
-    def __len__(self):
-        return self.last_index + 1
+        # Remove the last item from the random vector
+        move_key = self._random_vector.pop()
+
+        # Only swap if we are not deleting the last item
+        if i != self.last_index:
+            # Move the last item into the location of the deleted item
+            self._random_vector[i] = move_key
+            self._keys[move_key] = i
+
+        self.last_index -= 1
+        del self._keys[key]
+        super().__delitem__(key)
 
     def random_key(self):
         """ Return a random key from this dictionary in O(1) time """
         if len(self) == 0:
             raise KeyError("RandomDict is empty")
-        
         i = random.randint(0, self.last_index)
-        return self._values[i][0]                   
+        return self._random_vector[i]
 
     def random_value(self):
         """ Return a random value from this dictionary in O(1) time """
@@ -89,7 +78,7 @@ class RandomDict(MutableMapping):
         """ Return a random key-value pair from this dictionary in O(1) time """
         k = self.random_key()
         return k, self[k]
-    
+
 
 def replace_dicts():
     # Replace dict with RandomDict
